@@ -85,9 +85,15 @@ for mode in SpatialMode.allCases {
 }
 
 // Dual list.
-let dualPayload: [UInt8] = [0, 0, 2]
-    + [0x11] + hex("AABBCCDDEEFF") + [3] + Array("Mac".utf8)
-    + [0x00] + hex("010203040506") + [5] + Array("Pixel".utf8)
+var dualPayload: [UInt8] = [0, 0, 2]
+dualPayload.append(0x11)
+dualPayload += hex("AABBCCDDEEFF")
+dualPayload.append(3)
+dualPayload += Array("Mac".utf8)
+dualPayload.append(0x00)
+dualPayload += hex("010203040506")
+dualPayload.append(5)
+dualPayload += Array("Pixel".utf8)
 let devices = Codec.decodeDualList(dualPayload)
 check(devices.count == 2, "dual list count")
 check(devices[0] == DualDevice(mac: "AA-BB-CC-DD-EE-FF", name: "Mac", isSelf: true, isConnected: true), "dual self")
