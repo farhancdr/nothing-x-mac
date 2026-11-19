@@ -1,0 +1,101 @@
+// Menu bar icon: the app logo (an X split by a wave) drawn from its SVG path
+// as a template image, so macOS tints it for light and dark menu bars.
+// Falls back to the SF "earbuds" symbol.
+
+import AppKit
+
+enum MenuBarIcon {
+    static let height: CGFloat = 14
+
+    static func make() -> NSImage {
+        if let path = SVGPath.parse(logoPath), !path.isEmpty {
+            let bounds = path.bounds
+            let scale = height / bounds.height
+            let size = NSSize(width: ceil(bounds.width * scale), height: height)
+            let image = NSImage(size: size, flipped: true) { _ in
+                let transform = NSAffineTransform()
+                transform.scale(by: scale)
+                transform.translateX(by: -bounds.minX, yBy: -bounds.minY)
+                let drawn = path.copy() as! NSBezierPath
+                drawn.transform(using: transform as AffineTransform)
+                drawn.windingRule = .evenOdd
+                NSColor.black.setFill()
+                drawn.fill()
+                return true
+            }
+            image.isTemplate = true
+            return image
+        }
+        let fallback = NSImage(systemSymbolName: "earbuds", accessibilityDescription: "Nothing X")
+            ?? NSImage(size: NSSize(width: height, height: height))
+        fallback.isTemplate = true
+        return fallback
+    }
+
+    /// From the original project's logo.svg (viewBox 0 0 100 100, y pointing down).
+    static let logoPath = """
+    M7.78 11.13C11.14 11.1 22.88 11.12 26.33 11.17C29.78 11.23 27.78 11.29 28.48 11.47C29.18 11.64 29.92 11.93 30.5 12.2C31.08 12.48 31.46 12.71 31.98 13.11C32.49 13.51 30.94 11.68 33.57 14.63C36.21 17.57 45.22 27.92 47.78 30.77C50.33 33.61 48.51 31.46 48.92 31.67C49.34 31.88 49.82 32.03 50.27 32.02C50.72 32.02 51.21 31.86 51.61 31.65C52.02 31.44 50.12 33.69 52.72 30.77C55.32 27.84 64.53 17.13 67.22 14.13C69.9 11.13 68.29 13.13 68.83 12.76C69.37 12.39 69.55 12.17 70.44 11.9C71.34 11.63 70.44 11.26 74.21 11.14C77.98 11.02 89.54 11.06 93.04 11.16C96.54 11.27 94.72 11.55 95.19 11.76C95.66 11.98 95.69 12.18 95.85 12.47C96.01 12.77 96.14 13.15 96.13 13.55C96.11 13.95 96.05 14.31 95.75 14.89C95.45 15.48 97.2 13.21 94.32 17.05C91.45 20.88 82.18 33.14 78.51 37.89C74.85 42.64 73.54 44.27 72.33 45.54C71.12 46.82 72.1 46.16 71.25 45.55C70.4 44.94 68.47 42.81 67.22 41.87C65.96 40.92 64.84 40.38 63.72 39.88C62.6 39.38 61.61 39.06 60.49 38.88C59.37 38.71 58.07 38.74 56.99 38.83C55.92 38.92 55.02 39.11 54.04 39.42C53.05 39.74 52.65 39.65 51.08 40.73C49.51 41.8 46.37 44.59 44.62 45.87C42.87 47.15 41.71 47.81 40.58 48.38C39.46 48.95 38.79 49.09 37.89 49.28C37 49.47 36.01 49.53 35.2 49.51C34.4 49.5 33.81 49.39 33.05 49.19C32.29 48.98 31.32 48.59 30.63 48.26C29.94 47.92 29.48 47.63 28.89 47.18C28.3 46.73 28.67 47.4 27.11 45.56C25.54 43.72 22.27 39.73 19.5 36.15C16.73 32.56 12.92 27.4 10.5 24.04C8.08 20.68 6.03 17.58 4.98 15.97C3.93 14.36 4.33 14.85 4.2 14.36C4.08 13.86 4.11 13.42 4.25 13.01C4.38 12.61 4.69 12.21 5.01 11.94C5.33 11.66 5.69 11.49 6.15 11.35C6.61 11.22 4.42 11.16 7.78 11.13ZM59.04 46.91C59.98 46.73 61.06 46.61 62.11 46.72C63.15 46.83 64.35 47.13 65.33 47.56C66.32 47.99 67.08 48.53 68.02 49.32C68.96 50.1 68.65 49.47 70.98 52.26C73.31 55.05 77.98 60.75 82.01 66.05C86.05 71.35 92.88 80.84 95.19 84.06C97.51 87.28 95.76 84.98 95.91 85.37C96.06 85.77 96.12 86.09 96.1 86.45C96.07 86.81 95.91 87.24 95.76 87.53C95.61 87.81 95.65 87.94 95.19 88.18C94.74 88.41 94.3 88.81 93.04 88.96C91.79 89.11 91.02 89.05 87.66 89.07C84.3 89.08 75.91 89.18 72.87 89.05C69.82 88.92 70.27 88.6 69.37 88.3C68.47 87.99 68.07 87.64 67.49 87.22C66.9 86.79 68.42 88.66 65.87 85.75C63.32 82.84 54.67 72.62 52.16 69.77C49.65 66.93 51.26 68.92 50.81 68.67C50.36 68.42 49.91 68.29 49.46 68.29C49.01 68.29 48.57 68.42 48.12 68.66C47.67 68.9 49.31 66.9 46.77 69.73C44.23 72.56 35.46 82.73 32.86 85.64C30.26 88.56 31.72 86.8 31.17 87.23C30.62 87.66 30.45 87.92 29.56 88.22C28.66 88.53 29.42 88.91 25.79 89.05C22.16 89.19 11.13 89.12 7.77 89.06C4.4 89.01 6.18 88.92 5.61 88.71C5.05 88.5 4.65 88.22 4.38 87.8C4.1 87.37 3.9 86.76 3.96 86.18C4.01 85.6 0.94 89.81 4.73 84.3C8.52 78.78 22.93 58.34 26.71 53.09C30.49 47.85 27.2 52.85 27.4 52.84C27.61 52.82 27.22 52.49 27.94 53.02C28.66 53.55 30.5 55.22 31.71 56.01C32.92 56.79 34.08 57.34 35.2 57.73C36.33 58.11 37.31 58.27 38.43 58.34C39.55 58.4 40.94 58.3 41.93 58.14C42.92 57.97 43.54 57.7 44.35 57.34C45.16 56.98 46.05 56.45 46.77 55.98C47.49 55.51 47.44 55.63 48.65 54.52C49.87 53.4 52.73 50.42 54.04 49.3C55.34 48.18 55.62 48.21 56.46 47.81C57.29 47.41 58.09 47.09 59.04 46.91Z
+    """
+}
+
+/// Just enough of SVG path syntax for the logo: absolute M, L, C and Z.
+enum SVGPath {
+    static func parse(_ d: String) -> NSBezierPath? {
+        let path = NSBezierPath()
+        var tokens: [String] = []
+        var number = ""
+        func flush() {
+            if !number.isEmpty { tokens.append(number); number = "" }
+        }
+        for ch in d {
+            if ch.isLetter {
+                flush()
+                tokens.append(String(ch))
+            } else if ch == "-" {
+                flush()
+                number = "-"
+            } else if ch.isNumber || ch == "." {
+                number.append(ch)
+            } else {
+                flush()
+            }
+        }
+        flush()
+
+        var i = 0
+        var command = ""
+        func next() -> CGFloat? {
+            guard i < tokens.count, let v = Double(tokens[i]) else { return nil }
+            i += 1
+            return CGFloat(v)
+        }
+        func point() -> NSPoint? {
+            guard let x = next(), let y = next() else { return nil }
+            return NSPoint(x: x, y: y)
+        }
+
+        while i < tokens.count {
+            if tokens[i].first?.isLetter == true {
+                command = tokens[i]
+                i += 1
+            }
+            switch command {
+            case "M":
+                guard let p = point() else { return nil }
+                path.move(to: p)
+                command = "L" // implicit lineto after the first pair
+            case "L":
+                guard let p = point() else { return nil }
+                path.line(to: p)
+            case "C":
+                guard let c1 = point(), let c2 = point(), let p = point() else { return nil }
+                path.curve(to: p, controlPoint1: c1, controlPoint2: c2)
+            case "Z", "z":
+                path.close()
+            default:
+                return nil
+            }
+        }
+        return path
+    }
+}

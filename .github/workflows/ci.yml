@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: swift --version
+
+      - name: Protocol checks
+        run: swift run -c release NothingKitChecks
+
+      - name: Build app (universal)
+        run: scripts/build-app.sh --universal
+
+      - name: Check architectures
+        run: lipo -archs "build/Nothing X Mac.app/Contents/MacOS/NothingXMac"
