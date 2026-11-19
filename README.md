@@ -187,7 +187,7 @@ docs/                      Architecture, protocol, demo GIFs
 ## Credits
 
 - Inspired by [nothing-x-mac](https://github.com/yashraut362/nothing-x-mac) by
-  Yash Raut (MIT): app design, protocol handling, model data, app icon and logo.
+  Yash Raut (MIT): the original app design, protocol handling and model data.
 - Earbud protocol and model data originally from
   [ear-web](https://github.com/radiance-project/ear-web) by the Radiance project.
 - Serial number and ear tip test command ids, and the menu bar battery and saved
