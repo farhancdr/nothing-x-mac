@@ -60,9 +60,12 @@ Sources/NothingXMac/
   DeviceState.swift        Plain value types the UI renders
   AppSettings.swift        Menu bar battery mode, low battery alerts, saved EQs, Open at Login
   LowBatteryNotifier.swift Posts notifications; rules live in NothingKit/LowBattery.swift
-  MenuBarIcon.swift        Draws the logo as a template image from its SVG path
-  DebugSnapshots.swift     Debug only: renders every page to PNG (used for docs/screenshots)
+  DebugSnapshots.swift     Debug only: renders every page to PNG (NXM_SNAPSHOT)
+  DebugAnimation.swift     Debug only: renders the README walkthrough GIFs (NXM_ANIMATE)
   Views/                   One file per panel page plus shared components
+    Theme.swift            Design tokens: colors (light/dark), accent (brand red or system)
+    DotMatrix.swift        Dot Bud mark, 5×7 dot numerals and dot meters, drawn from circles
+scripts/make-icon.swift    Draws the app icon (Resources/AppIcon.icns, docs/icon.png)
 ```
 
 ## How a connection comes up
@@ -186,9 +189,13 @@ the first time earbuds connect, not at launch.
 
 ## UI
 
-- `NSStatusItem` shows the logo (a template image drawn from the SVG path) and,
-  optionally, battery text. Left click toggles an `NSPopover`; right click
-  shows the app menu.
+- `NSStatusItem` shows the "Dot Bud" mark: 12 dots drawn as a template image.
+  Its four states (disconnected, connecting, connected, low battery ≤20%) only
+  change dot opacity, so the item never resizes. Optional battery text sits next
+  to it. Left click toggles an `NSPopover`; right click shows the app menu.
+- Battery levels use 5×7 dot-matrix numerals drawn with `Canvas`, so no font
+  ships with the app. Colors and sizes live in `Views/Theme.swift`; the accent is
+  brand red unless **Use System Accent Color** is on.
 - The popover hosts `PanelView` in an `NSHostingController` with
   `sizingOptions = .preferredContentSize`, so its height follows the content.
 - `PanelNavigation.page` drives the sub-pages, which slide in from the right.

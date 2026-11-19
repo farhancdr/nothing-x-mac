@@ -150,5 +150,11 @@ var swapped = LowBatteryTracker()
 _ = swapped.update(report(left: 9))
 check(swapped.update(report(left: 15)).map(\.threshold) == [20], "recovering 5+ points re-arms (15% after 10% alert)")
 
+// Model recognition (used for the "unrecognised model" banner and the paired list)
+check(Capabilities.isRecognized("CMF Buds 2 Plus"), "known model is recognised")
+check(!Capabilities.isRecognized("Sony WH-1000XM5"), "other headphones are not recognised")
+check(Capabilities.looksLikeEarbuds("Nothing Ear (9)"), "unknown Nothing model still looks like earbuds")
+check(!Capabilities.looksLikeEarbuds("AirPods Pro"), "AirPods are not Nothing earbuds")
+
 print("\(passes) passed, \(failures) failed")
 exit(failures == 0 ? 0 : 1)

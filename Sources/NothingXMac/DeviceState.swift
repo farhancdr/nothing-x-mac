@@ -58,6 +58,8 @@ enum EarTipTestState: Equatable {
 
 struct DeviceState: Equatable {
     var connected = false
+    /// Earbuds the control channel is being opened to (before `connected`).
+    var connecting: String?
     var name: String?
     var address: String?
     var battery = Battery()
@@ -74,4 +76,6 @@ struct DeviceState: Equatable {
     var gestures = GestureState()
     var earTip = EarTipTestState.idle
     var capabilities = Capabilities.none
+    /// False for a model missing from the capability table (fallback features).
+    var recognized = true
 }

@@ -1,6 +1,7 @@
-// Equalizer page: preset tiles and, for Custom, a live curve over Bass / Mid /
-// Treble sliders (−6..+6 dB), plus locally saved custom EQs.
+// Equalizer page: preset list and, for Custom, a frequency-response curve over
+// Bass / Mid / Treble sliders (−6…+6 dB), plus custom EQs saved on this Mac.
 
+import AppKit
 import NothingKit
 import SwiftUI
 
@@ -12,174 +13,248 @@ struct EqualizerView: View {
     private var caps: EqCapabilities { device.state.capabilities.eq }
 
     var body: some View {
-        VStack(spacing: 8) {
-            SubpageHeader(title: "Equalizer")
+        let customSelected = caps.customId != nil && eq.preset == caps.customId
+        let bands = eq.custom ?? CustomEq()
+        VStack(spacing: 0) {
+            SubpageHeader(title: "Equalizer", back: .main)
 
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)], spacing: 6) {
+            if customSelected {
+                EqCurve(bands: bands)
+                    .frame(height: 84)
+                    .padding(.horizontal, Theme.inset)
+                    .padding(.top, 12)
+                    .padding(.bottom, 4)
+            }
+
+            VStack(spacing: 2) {
                 ForEach(caps.presets) { preset in
                     let selected = eq.preset == preset.id
-                    Tile(symbol: Self.symbol(for: preset.key), name: preset.label,
-                         detail: selected ? "Selected" : " ",
-                         on: selected, pending: selected && eq.pending) {
+                    SelectRow(label: preset.label, selected: selected, pending: selected && eq.pending) {
+                        guard !eq.pending else { return }
                         device.setEqPreset(preset.id)
                     }
-                    .disabled(eq.pending && !selected)
                 }
             }
-            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
 
-            if let customId = caps.customId, eq.preset == customId {
-                CustomEqEditor(bands: eq.custom ?? CustomEq())
+            if customSelected {
+                PanelSeparator()
+                VStack(spacing: 4) {
+                    BandSlider(name: "Bass", value: bands.bass) { var b = bands; b.bass = $0; device.setCustomEq(b) }
+                    BandSlider(name: "Mid", value: bands.mid) { var b = bands; b.mid = $0; device.setCustomEq(b) }
+                    BandSlider(name: "Treble", value: bands.treble) { var b = bands; b.treble = $0; device.setCustomEq(b) }
+                }
+                .padding(.vertical, 10)
             }
-        }
-    }
 
-    static func symbol(for key: String) -> String {
-        switch key {
-        case "balanced": return "equal.circle"
-        case "moreBass": return "speaker.wave.3.fill"
-        case "moreTreble": return "waveform.path.ecg"
-        case "voice": return "person.wave.2"
-        case "dirac": return "sparkles"
-        case "pop": return "music.note"
-        case "rock": return "guitars.fill"
-        case "classical": return "pianokeys"
-        case "electronic": return "waveform.path"
-        case "vocals": return "music.mic"
-        case "custom": return "slider.horizontal.3"
-        default: return "music.note"
+            if caps.customId != nil {
+                PanelSeparator()
+                SavedPresets(current: customSelected ? bands : nil)
+            }
         }
     }
 }
 
-private struct CustomEqEditor: View {
-    let bands: CustomEq
-    @EnvironmentObject var device: EarbudsController
-    @EnvironmentObject var settings: AppSettings
-    @StateObject private var saving = Local(false)
-    @StateObject private var newName = Local("")
+/// −6…+6 dB in 1 dB steps; the fill grows from the 0 dB tick.
+private struct BandSlider: View {
+    let name: String
+    let value: Int
+    let onChange: (Int) -> Void
+    @Environment(\.accent) private var accent
 
     var body: some View {
-        VStack(spacing: 6) {
-            EqCurve(bands: bands)
-                .frame(height: 64)
-                .padding(.horizontal, 14)
-
-            slider("Bass", bands.bass) { var b = bands; b.bass = $0; device.setCustomEq(b) }
-            slider("Mid", bands.mid) { var b = bands; b.mid = $0; device.setCustomEq(b) }
-            slider("Treble", bands.treble) { var b = bands; b.treble = $0; device.setCustomEq(b) }
-
-            savedPresets
-        }
-    }
-
-    private func slider(_ name: String, _ value: Int, _ set: @escaping (Int) -> Void) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             Text(name).font(.system(size: 12)).frame(width: 44, alignment: .leading)
-            Slider(value: Binding(get: { Double(value) }, set: { set(Int($0.rounded())) }), in: -6...6, step: 1)
-                .controlSize(.small)
-            Text(formatGain(value)).font(.system(size: 11).monospacedDigit())
-                .foregroundStyle(.secondary).frame(width: 40, alignment: .trailing)
+            GeometryReader { geo in
+                let knob: CGFloat = 16
+                let usable = geo.size.width - knob
+                let xFor = { (v: Int) in knob / 2 + CGFloat(v + 6) / 12 * usable }
+                let zero = xFor(0), x = xFor(value)
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Theme.trackOff).frame(height: 4)
+                    Rectangle().fill(accent)
+                        .frame(width: abs(x - zero), height: 4)
+                        .offset(x: min(x, zero))
+                    Rectangle().fill(Theme.tertiary).frame(width: 1, height: 10).offset(x: zero - 0.5)
+                    Circle().fill(Color.white)
+                        .shadow(color: .black.opacity(0.3), radius: 1, y: 0.5)
+                        .frame(width: knob, height: knob)
+                        .offset(x: x - knob / 2)
+                }
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0).onChanged { drag in
+                    let v = Int(((drag.location.x - knob / 2) / usable * 12 - 6).rounded())
+                    let clamped = min(max(v, -6), 6)
+                    if clamped != value { onChange(clamped) }
+                })
+            }
+            .frame(height: 24)
+            .accessibilityElement()
+            .accessibilityLabel(name)
+            .accessibilityValue(Self.format(value))
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: if value < 6 { onChange(value + 1) }
+                case .decrement: if value > -6 { onChange(value - 1) }
+                @unknown default: break
+                }
+            }
+            Text(Self.format(value)).font(.system(size: 11).monospacedDigit())
+                .foregroundStyle(Theme.secondaryLabel).frame(width: 40, alignment: .trailing)
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, Theme.inset)
     }
 
-    private func formatGain(_ v: Int) -> String {
+    static func format(_ v: Int) -> String {
         v > 0 ? "+\(v) dB" : v < 0 ? "−\(abs(v)) dB" : "0 dB"
-    }
-
-    // Saved custom EQs live on this Mac (idea from nikiomori/nothing-x-macos).
-    private var savedPresets: some View {
-        VStack(spacing: 4) {
-            HStack {
-                Text("My Presets").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
-                Spacer()
-                if !saving.value {
-                    Button("Save Current…") { newName.value = ""; saving.value = true }
-                        .buttonStyle(.link).font(.system(size: 11))
-                }
-            }
-            .padding(.horizontal, 14)
-
-            if saving.value {
-                HStack(spacing: 6) {
-                    TextField("Preset name", text: $newName.value)
-                        .textFieldStyle(.roundedBorder)
-                        .controlSize(.small)
-                        .onSubmit(save)
-                    Button("Save", action: save).controlSize(.small)
-                        .disabled(newName.value.trimmingCharacters(in: .whitespaces).isEmpty)
-                    Button("Cancel") { saving.value = false }.controlSize(.small)
-                }
-                .padding(.horizontal, 14)
-            }
-
-            ForEach(settings.savedEqs) { saved in
-                let active = saved.bands == bands
-                Button { device.setCustomEq(saved.bands) } label: {
-                    HStack {
-                        Image(systemName: "checkmark").font(.system(size: 11, weight: .semibold))
-                            .opacity(active ? 1 : 0).frame(width: 14)
-                        Text(saved.name).font(.system(size: 12)).lineLimit(1)
-                        Spacer()
-                        Text("\(formatShort(saved.bass)) / \(formatShort(saved.mid)) / \(formatShort(saved.treble))")
-                            .font(.system(size: 10).monospacedDigit()).foregroundStyle(.secondary)
-                    }
-                }
-                .buttonStyle(HoverRowStyle())
-                .contextMenu {
-                    Button("Delete “\(saved.name)”", role: .destructive) { settings.deleteEq(saved) }
-                }
-            }
-            if settings.savedEqs.isEmpty && !saving.value {
-                FooterNote("Save the current bands to switch back to them later. Right-click a preset to delete it.")
-            }
-        }
-        .padding(.top, 4)
-    }
-
-    private func formatShort(_ v: Int) -> String { v > 0 ? "+\(v)" : "\(v)" }
-
-    private func save() {
-        settings.saveEq(name: newName.value, bands: bands)
-        saving.value = false
     }
 }
 
-/// Smooth curve: bass shelf on the left, mid peak in the centre, treble shelf on the right.
+// MARK: - Saved presets
+
+private struct SavedPresets: View {
+    /// The current custom bands, or nil when a built-in preset is selected.
+    let current: CustomEq?
+    @EnvironmentObject var device: EarbudsController
+    @EnvironmentObject var settings: AppSettings
+
+    var body: some View {
+        VStack(spacing: 2) {
+            SectionCaption("Saved Presets").padding(.top, 10).padding(.bottom, -4)
+            ForEach(settings.savedEqs) { saved in
+                HStack(spacing: 0) {
+                    SelectRow(label: saved.name, detail: Self.summary(saved), selected: saved.bands == current) {
+                        device.setCustomEq(saved.bands)
+                    }
+                    Menu {
+                        Button("Apply") { device.setCustomEq(saved.bands) }
+                        Button("Rename…") {
+                            if let name = NamePrompt.ask(title: "Rename Preset", initial: saved.name) {
+                                settings.renameEq(saved, to: name)
+                            }
+                        }
+                        Divider()
+                        Button("Delete") { settings.deleteEq(saved) }
+                    } label: {
+                        Image(systemName: "ellipsis").font(.system(size: 11))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .tint(Theme.secondaryLabel)
+                    .fixedSize()
+                    .padding(.trailing, Theme.inset)
+                    .accessibilityLabel("\(saved.name) options")
+                }
+            }
+            Button {
+                if let name = NamePrompt.ask(title: "Save Preset", initial: "") {
+                    settings.saveEq(name: name, bands: current ?? CustomEq())
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "plus").font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.secondaryLabel).frame(width: 14)
+                    Text("Save Current…").font(.system(size: 13))
+                    Spacer()
+                }
+                .frame(height: 28)
+            }
+            .buttonStyle(HoverRowStyle())
+            .disabled(current == nil)
+            .help(current == nil ? "Choose Custom to save its bands" : "Save the current bands under a name")
+        }
+        .padding(.bottom, 8)
+    }
+
+    static func summary(_ eq: SavedEq) -> String {
+        func f(_ v: Int) -> String { v > 0 ? "+\(v)" : v < 0 ? "−\(abs(v))" : "0" }
+        return "B\(f(eq.bass)) M\(f(eq.mid)) T\(f(eq.treble))"
+    }
+}
+
+/// A small NSAlert asking for a name. Returns nil when cancelled or empty.
+enum NamePrompt {
+    static func ask(title: String, initial: String) -> String? {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = "Name"
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
+        field.stringValue = initial
+        field.placeholderString = "e.g. Commute"
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? nil : name
+    }
+}
+
+// MARK: - Curve
+
+/// Frequency response of the three bands on a log axis (20 Hz–20 kHz):
+/// low shelf at 150 Hz, peak at 1 kHz, high shelf at 6 kHz.
 private struct EqCurve: View {
     let bands: CustomEq
+    @Environment(\.accent) private var accent
 
     var body: some View {
         GeometryReader { geo in
-            let w = geo.size.width, h = geo.size.height, pad: CGFloat = 6
-            let y = { (gain: Int) in h / 2 - CGFloat(gain) / 6 * (h / 2 - pad) }
-            let curve = Path { p in
-                p.move(to: CGPoint(x: 0, y: y(bands.bass)))
-                p.addCurve(to: CGPoint(x: w * 0.5, y: y(bands.mid)),
-                           control1: CGPoint(x: w * 0.22, y: y(bands.bass)),
-                           control2: CGPoint(x: w * 0.32, y: y(bands.mid)))
-                p.addCurve(to: CGPoint(x: w, y: y(bands.treble)),
-                           control1: CGPoint(x: w * 0.68, y: y(bands.mid)),
-                           control2: CGPoint(x: w * 0.78, y: y(bands.treble)))
+            let w = geo.size.width, plotH = geo.size.height - 14
+            let logMin = log10(20.0), logMax = log10(20_000.0)
+            let xFor = { (f: Double) in CGFloat((log10(f) - logMin) / (logMax - logMin)) * w }
+            let yFor = { (db: Double) in plotH / 2 - CGFloat(db / 7) * (plotH / 2) }
+            let samples = (0...80).map { i -> CGPoint in
+                let f = pow(10, logMin + (logMax - logMin) * Double(i) / 80)
+                return CGPoint(x: xFor(f), y: yFor(Self.response(f, bands)))
             }
-            ZStack {
+            let curve = Path { p in p.addLines(samples) }
+            ZStack(alignment: .topLeading) {
+                // ±6 dB lines and decade lines
                 Path { p in
-                    p.move(to: CGPoint(x: 0, y: h / 2))
-                    p.addLine(to: CGPoint(x: w, y: h / 2))
+                    for db in [-6.0, 6.0] {
+                        p.move(to: CGPoint(x: 0, y: yFor(db))); p.addLine(to: CGPoint(x: w, y: yFor(db)))
+                    }
+                    for f in [100.0, 1000, 10_000] {
+                        p.move(to: CGPoint(x: xFor(f), y: 0)); p.addLine(to: CGPoint(x: xFor(f), y: plotH))
+                    }
                 }
-                .stroke(Color.primary.opacity(0.15), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                .stroke(Theme.separator, lineWidth: 1)
+                Path { p in
+                    p.move(to: CGPoint(x: 0, y: yFor(0))); p.addLine(to: CGPoint(x: w, y: yFor(0)))
+                }
+                .stroke(Theme.tertiary, style: StrokeStyle(lineWidth: 1, dash: [2, 3]))
 
                 Path { p in
-                    p.addPath(curve)
-                    p.addLine(to: CGPoint(x: w, y: h / 2))
-                    p.addLine(to: CGPoint(x: 0, y: h / 2))
+                    p.addLines(samples)
+                    p.addLine(to: CGPoint(x: w, y: yFor(0)))
+                    p.addLine(to: CGPoint(x: 0, y: yFor(0)))
                     p.closeSubpath()
                 }
-                .fill(Color.accentColor.opacity(0.18))
-                curve.stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .fill(accent.opacity(0.12))
+                curve.stroke(accent, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+
+                Text("+6").font(.system(size: 9)).foregroundStyle(Theme.secondaryLabel)
+                    .offset(x: 2, y: yFor(6) - 12)
+                ForEach([(100.0, "100"), (1000, "1k"), (10_000, "10k")], id: \.1) { f, label in
+                    Text(label).font(.system(size: 9)).foregroundStyle(Theme.secondaryLabel)
+                        .offset(x: xFor(f) + 3, y: plotH + 2)
+                }
             }
             .animation(.easeOut(duration: 0.15), value: bands)
         }
+        .accessibilityHidden(true)
+    }
+
+    /// Smooth approximation of shelf and peak filters, in dB.
+    static func response(_ f: Double, _ b: CustomEq) -> Double {
+        let octaves = { (fc: Double) in log2(f / fc) }
+        let lowShelf = Double(b.bass) / (1 + exp(octaves(150) * 2.2))
+        let peak = Double(b.mid) * exp(-pow(octaves(1000), 2) / (2 * 0.9 * 0.9))
+        let highShelf = Double(b.treble) / (1 + exp(-octaves(6000) * 2.2))
+        return lowShelf + peak + highShelf
     }
 }

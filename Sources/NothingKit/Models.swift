@@ -198,6 +198,18 @@ public struct Capabilities: Equatable {
     public static func forDeviceName(_ name: String) -> Capabilities {
         ModelSpec.forName(name).capabilities
     }
+
+    /// True when the name matches a known model rather than the fallback.
+    public static func isRecognized(_ name: String) -> Bool {
+        let lower = name.lowercased()
+        return ModelSpec.all.contains { lower.contains($0.name.lowercased()) }
+    }
+
+    /// A known model, or a name that says Nothing or CMF.
+    public static func looksLikeEarbuds(_ name: String) -> Bool {
+        let lower = name.lowercased()
+        return isRecognized(name) || lower.contains("nothing") || lower.contains("cmf")
+    }
 }
 
 public enum PersonalSoundBackend {

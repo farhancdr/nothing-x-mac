@@ -35,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            button.image = MenuBarIcon.make()
+            button.image = DotBud.templateImage(.disconnected)
             button.imagePosition = .imageLeading
             button.toolTip = Self.appName
             button.target = self
@@ -80,10 +80,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func updateStatusItem(state: DeviceState, mode: MenuBarBattery) {
         guard let button = statusItem?.button else { return }
+        let look = Self.look(for: state)
+        if look != shownLook {
+            shownLook = look
+            button.image = DotBud.templateImage(look)
+        }
         let text = state.connected ? mode.text(for: state.battery) : nil
-        button.title = text.map { " \($0)" } ?? ""
-        button.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize(for: .small), weight: .regular)
+        // SF 12 medium with tabular digits, 4 pt after the glyph; tinted like the glyph.
+        button.attributedTitle = NSAttributedString(
+            string: text.map { "\u{2009}\($0)" } ?? "",
+            attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)])
         button.toolTip = state.connected ? "\(Self.appName) · \(state.name ?? "")" : Self.appName
+    }
+
+    private var shownLook: DotBud.Look?
+
+    /// Menu bar glyph: low once any part (not charging) is at 20% or below.
+    static func look(for state: DeviceState) -> DotBud.Look {
+        guard state.connected else { return state.connecting != nil ? .connecting : .disconnected }
+        let parts = [state.battery.left, state.battery.right, state.battery.stereo].compactMap { $0 }
+        return parts.contains { !$0.charging && $0.level <= 20 } ? .low : .connected
     }
 
     // MARK: Popover
@@ -109,6 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func showPopover() {
         guard let button = statusItem.button else { return }
         controller.refreshBattery()
+        controller.refreshPaired()
         navigation.page = .main
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         NSApp.activate(ignoringOtherApps: true)
@@ -149,6 +166,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         alerts.toolTip = "Notify at 20% and 10% for each earbud and the case"
         menu.addItem(alerts)
 
+        let accent = NSMenuItem(title: "Use System Accent Color", action: #selector(toggleSystemAccent), keyEquivalent: "")
+        accent.target = self
+        accent.state = settings.useSystemAccent ? .on : .off
+        menu.addItem(accent)
+
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit \(Self.appName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(quit)
@@ -161,6 +183,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     @objc private func toggleLoginItem() {
         LoginItem.setEnabled(!LoginItem.isEnabled)
+    }
+
+    @objc private func toggleSystemAccent() {
+        settings.useSystemAccent.toggle()
     }
 
     @objc private func toggleLowBatteryAlerts() {

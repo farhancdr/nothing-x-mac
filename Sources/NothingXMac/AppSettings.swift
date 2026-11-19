@@ -27,7 +27,7 @@ enum MenuBarBattery: String, CaseIterable, Identifiable {
         case (.off, _, _):
             return nil
         case (.both, let l?, let r?):
-            return l == r ? "\(l)%" : "\(l)·\(r)%"
+            return "\(l)\u{2009}·\u{2009}\(r)" // thin spaces around the middle dot
         case (.average, let l?, let r?):
             return "\((l + r) / 2)%"
         case (.minimum, let l?, let r?):
@@ -54,7 +54,7 @@ struct SavedEq: Codable, Identifiable, Equatable {
 }
 
 final class AppSettings: ObservableObject {
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
 
     @Published var menuBarBattery: MenuBarBattery {
         didSet { defaults.set(menuBarBattery.rawValue, forKey: "menuBarBattery") }
@@ -65,15 +65,22 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(lowBatteryAlerts, forKey: "lowBatteryAlerts") }
     }
 
+    /// Use the system accent color instead of the brand red.
+    @Published var useSystemAccent: Bool {
+        didSet { defaults.set(useSystemAccent, forKey: "useSystemAccent") }
+    }
+
     @Published private(set) var savedEqs: [SavedEq] {
         didSet {
             if let data = try? JSONEncoder().encode(savedEqs) { defaults.set(data, forKey: "savedEqs") }
         }
     }
 
-    init() {
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         menuBarBattery = MenuBarBattery(rawValue: defaults.string(forKey: "menuBarBattery") ?? "") ?? .off
         lowBatteryAlerts = defaults.object(forKey: "lowBatteryAlerts") as? Bool ?? true
+        useSystemAccent = defaults.bool(forKey: "useSystemAccent")
         if let data = defaults.data(forKey: "savedEqs"),
            let saved = try? JSONDecoder().decode([SavedEq].self, from: data) {
             savedEqs = saved
@@ -92,6 +99,12 @@ final class AppSettings: ObservableObject {
         } else {
             savedEqs.append(SavedEq(name: trimmed, bass: bands.bass, mid: bands.mid, treble: bands.treble))
         }
+    }
+
+    func renameEq(_ eq: SavedEq, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let i = savedEqs.firstIndex(where: { $0.id == eq.id }) else { return }
+        savedEqs[i].name = trimmed
     }
 
     func deleteEq(_ eq: SavedEq) {

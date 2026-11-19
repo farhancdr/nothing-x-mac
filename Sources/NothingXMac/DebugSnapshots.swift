@@ -14,30 +14,50 @@ extension EarbudsController {
         s.name = "CMF Buds 2 Plus"
         s.address = "aa-bb-cc-dd-ee-ff"
         s.capabilities = Capabilities.forDeviceName("CMF Buds 2 Plus")
-        s.battery.left = BatteryLevel(level: 85, charging: false)
-        s.battery.right = BatteryLevel(level: 18, charging: false)
-        s.battery.case = BatteryLevel(level: 60, charging: true)
+        s.battery.left = BatteryLevel(level: 82, charging: false)
+        s.battery.right = BatteryLevel(level: 79, charging: true)
+        s.battery.case = BatteryLevel(level: 54, charging: false)
         s.noiseMode = .anc
         s.ancStrength = .mid
         s.bass = BassValue(enabled: true, level: 3)
         s.quick.inEar = true
         s.quick.lowLatency = false
         s.quick.personalSound = false
-        s.quick.spatial = .off
-        s.quick.firmware = "1.0.1.31"
+        s.quick.spatial = .fixed
+        s.quick.firmware = "1.0.3.124"
         s.quick.serial = "SH10000000000000"
-        s.quick.pending = [.lowLatency]
         s.eq.preset = 6
         s.eq.custom = CustomEq(bass: 4, mid: -2, treble: 3)
         s.dual.enabled = true
         s.dual.devices = [
             DualDevice(mac: "AA", name: "MacBook Pro", isSelf: true, isConnected: true),
-            DualDevice(mac: "BB", name: "Pixel 9", isSelf: false, isConnected: true),
+            DualDevice(mac: "BB", name: "iPhone", isSelf: false, isConnected: true),
             DualDevice(mac: "CC", name: "iPad", isSelf: false, isConnected: false),
+            DualDevice(mac: "DD", name: "Work PC", isSelf: false, isConnected: false),
         ]
         s.gestures.values = [.left: ["doubleTap": 2, "tripleTap": 9, "tapHold": 22, "doubleTapHold": 18],
                              .right: ["doubleTap": 2, "tripleTap": 8, "tapHold": 11, "doubleTapHold": 19]]
         s.earTip = .finished(left: .good, right: .poor)
+        setSampleState(s)
+    }
+
+    func loadConnectingSample() {
+        var s = DeviceState()
+        s.connecting = "CMF Buds 2 Plus"
+        setSampleState(s)
+    }
+
+    func loadUnrecognisedSample() {
+        var s = DeviceState()
+        s.connected = true
+        s.name = "Nothing earbuds"
+        s.recognized = false
+        s.capabilities = Capabilities.forDeviceName("Nothing earbuds")
+        s.battery.left = BatteryLevel(level: 64, charging: false)
+        s.battery.right = BatteryLevel(level: 61, charging: false)
+        s.battery.case = BatteryLevel(level: 40, charging: false)
+        s.noiseMode = .off
+        s.bass = BassValue(enabled: false, level: 1)
         setSampleState(s)
     }
 }
@@ -50,6 +70,12 @@ enum DebugSnapshots {
             print("Open at Login now: \(LoginItem.isEnabled ? "on" : "off")")
             exit(0)
         }
+        if let dir = ProcessInfo.processInfo.environment["NXM_ANIMATE"] {
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            DemoAnimation.run(dir: dir)
+            exit(0)
+        }
         guard let dir = ProcessInfo.processInfo.environment["NXM_SNAPSHOT"] else { return }
         _ = NSApplication.shared
         NSApp.setActivationPolicy(.accessory)
@@ -57,10 +83,22 @@ enum DebugSnapshots {
         let device = EarbudsController()
         device.loadSample()
         let offline = EarbudsController()
-        let settings = AppSettings()
+        offline.setSamplePaired([.init(name: "CMF Buds 2 Plus", address: "aa-bb-cc-dd-ee-ff")])
+        let connecting = EarbudsController()
+        connecting.loadConnectingSample()
+        let unrecognised = EarbudsController()
+        unrecognised.loadUnrecognisedSample()
+        // Throwaway defaults so sample presets never reach the real settings.
+        let scratch = UserDefaults(suiteName: "nxm-snapshots")!
+        scratch.removePersistentDomain(forName: "nxm-snapshots")
+        let settings = AppSettings(defaults: scratch)
+        do {
+            settings.saveEq(name: "Commute", bands: CustomEq(bass: 4, mid: 0, treble: 2))
+            settings.saveEq(name: "Late Night", bands: CustomEq(bass: -2, mid: 1, treble: -3))
+        }
         let pages: [(String, PanelPage)] = [
-            ("main", .main), ("quick", .quickSettings), ("eq", .equalizer),
-            ("controls", .controls(.left)), ("eartip", .earTip),
+            ("main", .main), ("quick", .quickSettings), ("spatial", .spatial), ("dual", .dual),
+            ("eq", .equalizer), ("controls", .controls(.left)), ("eartip", .earTip),
         ]
 
         func panel(_ page: PanelPage, _ controller: EarbudsController) -> some View {
@@ -81,6 +119,10 @@ enum DebugSnapshots {
             }
             render(panel(.main, offline).background(Color(nsColor: .windowBackgroundColor)),
                    dark: dark, to: "\(dir)/disconnected-\(suffix).png")
+            render(panel(.main, connecting).background(Color(nsColor: .windowBackgroundColor)),
+                   dark: dark, to: "\(dir)/connecting-\(suffix).png")
+            render(panel(.main, unrecognised).background(Color(nsColor: .windowBackgroundColor)),
+                   dark: dark, to: "\(dir)/unrecognised-\(suffix).png")
 
             // README hero: four pages side by side, each as a floating panel.
             let hero = HStack(alignment: .top, spacing: 28) {
@@ -103,6 +145,12 @@ enum DebugSnapshots {
 
     /// Draws a view through a real (offscreen) window so native AppKit controls render too.
     @MainActor private static func render<V: View>(_ view: V, dark: Bool, to path: String) {
+        if let rep = bitmap(view, dark: dark), let png = rep.representation(using: .png, properties: [:]) {
+            try? png.write(to: URL(fileURLWithPath: path))
+        }
+    }
+
+    @MainActor static func bitmap<V: View>(_ view: V, dark: Bool) -> NSBitmapImageRep? {
         let hosting = NSHostingView(rootView: view)
         hosting.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         let size = hosting.fittingSize
@@ -115,12 +163,10 @@ enum DebugSnapshots {
         RunLoop.main.run(until: Date().addingTimeInterval(0.6))
         hosting.layoutSubtreeIfNeeded()
 
-        guard let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else { return }
+        guard let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else { return nil }
         hosting.cacheDisplay(in: hosting.bounds, to: rep)
         window.orderOut(nil)
-        if let png = rep.representation(using: .png, properties: [:]) {
-            try? png.write(to: URL(fileURLWithPath: path))
-        }
+        return rep
     }
 }
 

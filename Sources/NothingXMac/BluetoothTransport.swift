@@ -12,6 +12,8 @@ final class BluetoothTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
     var onConnected: ((_ name: String, _ address: String) -> Void)?
     var onData: (([UInt8]) -> Void)?
     var onDisconnected: (() -> Void)?
+    /// Name of the earbuds the channel is being opened to, or nil when there are none.
+    var onConnecting: ((String?) -> Void)?
 
     /// Nothing / CMF control service (SPP over RFCOMM).
     private static let serviceUUIDBytes: [UInt8] = [
@@ -85,8 +87,13 @@ final class BluetoothTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
             handleOpenFailure(opening.device, status: kIOReturnTimeout)
         }
         guard let paired = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] else { return }
+        let connected = paired.filter { $0.isConnected() }
+        // Keep "Connecting…" up between retries; clear it once no candidate is around.
+        if !connected.contains(where: { $0.getServiceRecord(for: serviceUUID) != nil }) {
+            onConnecting?(nil)
+        }
 
-        for candidate in paired where candidate.isConnected() {
+        for candidate in connected {
             let address = candidate.addressString ?? ""
             guard let record = candidate.getServiceRecord(for: serviceUUID) else {
                 // Service list not cached yet: ask once, pick it up on a later scan.
@@ -107,6 +114,7 @@ final class BluetoothTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
                 continue
             }
             opening = (newChannel, candidate, Date())
+            onConnecting?(candidate.name ?? candidate.nameOrAddress)
             return
         }
     }
@@ -133,6 +141,52 @@ final class BluetoothTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                 _ = device.openConnection()
             }
+        }
+    }
+
+    // MARK: Paired earbuds
+
+    struct PairedEarbuds: Equatable, Identifiable {
+        var name: String
+        var address: String
+        var id: String { address }
+    }
+
+    /// Paired devices that look like Nothing or CMF earbuds but aren't connected.
+    static func pairedEarbuds(isEarbuds: (String) -> Bool) -> [PairedEarbuds] {
+        let paired = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] ?? []
+        return paired.compactMap { device in
+            guard !device.isConnected(), let name = device.name, isEarbuds(name),
+                  let address = device.addressString else { return nil }
+            return PairedEarbuds(name: name, address: address)
+        }
+    }
+
+    /// Bring up the Bluetooth (audio) link to paired earbuds; the scan then opens the channel.
+    func connectPaired(_ address: String, completion: @escaping (Bool) -> Void) {
+        guard let device = IOBluetoothDevice(addressString: address) else { return completion(false) }
+        var target: ConnectTarget?
+        target = ConnectTarget { [weak self] status in
+            self?.pendingConnects.removeAll { $0 === target }
+            completion(status == kIOReturnSuccess)
+        }
+        guard let target else { return }
+        pendingConnects.append(target)
+        let status = device.openConnection(target)
+        if status != kIOReturnSuccess {
+            pendingConnects.removeAll { $0 === target }
+            completion(false)
+        }
+    }
+
+    private var pendingConnects: [ConnectTarget] = []
+
+    private final class ConnectTarget: NSObject {
+        let done: (IOReturn) -> Void
+        init(_ done: @escaping (IOReturn) -> Void) { self.done = done }
+
+        @objc func connectionComplete(_ device: IOBluetoothDevice!, status: IOReturn) {
+            done(status)
         }
     }
 

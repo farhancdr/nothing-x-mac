@@ -1,7 +1,6 @@
-// Controls page (gestures), styled after macOS AirPods settings: pick the left
-// or right bud, then a grouped list of its gestures with pop-up menus. When a
-// gesture is set to Noise Control, checkboxes choose which modes it cycles.
-// Opened by clicking a bud in the battery row (models with gesture support).
+// Controls page (gestures): pick the left or right bud, then a pop-up per
+// gesture. When a gesture is set to Noise Control, checkboxes choose which
+// modes it cycles through. Opened by clicking a bud on the main page.
 
 import NothingKit
 import SwiftUI
@@ -13,58 +12,30 @@ struct ControlsView: View {
 
     var body: some View {
         let state = device.state
-        VStack(spacing: 8) {
-            SubpageHeader(title: "Controls")
+        VStack(spacing: 0) {
+            SubpageHeader(title: "Controls", back: .main)
 
-            HStack(spacing: 8) {
-                ForEach(GestureSide.allCases) { s in
-                    Button { nav.page = .controls(s) } label: {
-                        VStack(spacing: 4) {
-                            Image(systemName: s == .left ? "airpodpro.left" : "airpodpro.right")
-                                .font(.system(size: 24, weight: .light))
-                            Text(s.label).font(.system(size: 12))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(RoundedRectangle(cornerRadius: 10)
-                            .strokeBorder(s == side ? Color.accentColor : Color.primary.opacity(0.12),
-                                          lineWidth: s == side ? 2 : 1))
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 14)
+            DotSegmented(items: GestureSide.allCases.map { SegmentItem(id: $0, label: $0.label) },
+                         selection: side, height: 28, labelSize: 12) { nav.page = .controls($0) }
+                .padding(.horizontal, Theme.inset)
+                .padding(.top, 12)
+                .padding(.bottom, 6)
 
             if let caps = state.capabilities.gestures {
-                group(title: "\(side.label) Earbud") {
-                    ForEach(caps.slots) { slot in
-                        GestureRow(side: side, slot: slot)
-                        if slot.id != caps.slots.last?.id { Divider().padding(.leading, 10) }
-                    }
-                }
-
-                // Noise Control checkboxes for the gesture that's set to Noise Control.
-                if let slot = caps.slots.first(where: { $0.actions.contains { $0.choice == .noiseControl } }),
-                   let code = state.gestures.code(side, slot.key),
-                   let cycle = GestureCapabilities.noiseCycles[code] {
-                    group(title: "Noise Control") {
+                ForEach(caps.slots) { slot in
+                    GestureRow(side: side, slot: slot)
+                    if slot.actions.contains(where: { $0.choice == .noiseControl }),
+                       let code = state.gestures.code(side, slot.key),
+                       let cycle = GestureCapabilities.noiseCycles[code] {
                         NoiseCycleRows(side: side, slotKey: slot.key, cycle: cycle)
                     }
-                    FooterNote("Tap and hold switches between these. Choose at least two.")
                 }
             }
-        }
-    }
 
-    private func group<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
-                .padding(.horizontal, 4)
-            VStack(spacing: 0, content: content)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.05)))
+            FooterNote("Changes apply to the \(side.label) earbud only.")
+                .padding(.top, 6)
+                .padding(.bottom, 12)
         }
-        .padding(.horizontal, 12)
     }
 }
 
@@ -77,31 +48,28 @@ private struct GestureRow: View {
         let code = device.state.gestures.code(side, slot.key)
         let current = code.map(GestureCapabilities.choice(for:))
         let pending = device.state.gestures.pending.contains("\(side.rawValue).\(slot.key)")
-        HStack {
-            Text(slot.label).font(.system(size: 12))
-            Spacer()
-            if pending { ProgressView().controlSize(.small).scaleEffect(0.6) }
-            Menu {
+        HStack(spacing: 10) {
+            Image(systemName: "hand.tap").font(.system(size: 13)).foregroundStyle(Theme.secondaryLabel)
+                .frame(width: 16)
+            Text(slot.label.replacingOccurrences(of: " and ", with: " & "))
+                .font(.system(size: 13))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4)
+            if pending { PendingSpinner(size: 11) }
+            Picker(slot.label, selection: Binding(
+                get: { current ?? slot.actions.first!.choice },
+                set: { device.setGesture(side, slot: slot.key, choice: $0) })) {
                 ForEach(slot.actions, id: \.self) { action in
-                    Button {
-                        device.setGesture(side, slot: slot.key, choice: action.choice)
-                    } label: {
-                        if action.choice == current {
-                            Label(action.label, systemImage: "checkmark")
-                        } else {
-                            Text(action.label)
-                        }
-                    }
+                    Text(action.label).tag(action.choice)
                 }
-            } label: {
-                Text(slot.actions.first { $0.choice == current }?.label ?? "—")
-                    .font(.system(size: 12))
             }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .frame(width: 132)
+            .disabled(pending || current == nil)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, Theme.inset)
+        .frame(minHeight: 40)
     }
 }
 
@@ -113,24 +81,25 @@ private struct NoiseCycleRows: View {
 
     var body: some View {
         let onCount = [cycle.anc, cycle.transparency, cycle.off].filter { $0 }.count
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("Cycles through").font(.system(size: 11)).foregroundStyle(Theme.secondaryLabel)
             row("Noise Cancellation", cycle.anc, onCount) { var c = cycle; c.anc = $0; return c }
-            Divider().padding(.leading, 10)
             row("Transparency", cycle.transparency, onCount) { var c = cycle; c.transparency = $0; return c }
-            Divider().padding(.leading, 10)
             row("Off", cycle.off, onCount) { var c = cycle; c.off = $0; return c }
+            Text("Pick at least two.").font(.system(size: 11)).foregroundStyle(Theme.secondaryLabel)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.leading, Theme.inset + 26)
+        .padding(.trailing, Theme.inset)
+        .padding(.bottom, 8)
     }
 
     private func row(_ label: String, _ on: Bool, _ onCount: Int, _ change: @escaping (Bool) -> NoiseCycle) -> some View {
         Toggle(isOn: Binding(get: { on }, set: { device.setGestureNoiseCycle(side, slot: slotKey, cycle: change($0)) })) {
-            Text(label).font(.system(size: 12))
+            Text(label).font(.system(size: 13))
         }
         .toggleStyle(.checkbox)
-        // Keep at least two modes: the last two can't be unticked.
+        // The last two ticked modes can't be cleared.
         .disabled(on && onCount <= 2)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
     }
 }

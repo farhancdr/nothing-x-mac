@@ -18,10 +18,12 @@
   </p>
 </p>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-dark.png">
-  <img src="docs/screenshots/overview-light.png" alt="Nothing X Mac panels: main page with battery, noise control and bass; Quick Settings; Equalizer; gesture Controls">
-</picture>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/demo-dark.gif">
+    <img src="docs/demo-light.gif" width="440" alt="Nothing X Mac walkthrough: the menu bar panel with dot-matrix battery levels, switching noise control and Bass Enhance, then Quick Settings, Dual Connection, the Equalizer, gesture Controls and the Ear Tip Fit Test">
+  </picture>
+</p>
 
 Nothing's companion app, Nothing X, only exists for phones. On a Mac your
 earbuds play audio, but you can't see their battery, switch noise cancellation
@@ -41,7 +43,7 @@ to the earbuds directly over Bluetooth. No account, no internet, no telemetry.
 - **Controls**: change each bud's tap gestures, and pick which modes Tap and Hold cycles through
 - **Ear Tip Fit Test**
 - **Device info**: firmware, serial number, Bluetooth address
-- **Open at Login**, light and dark mode, follows your accent color
+- **Open at Login**, light and dark mode, brand red or your system accent color
 
 Each model only shows the features it supports.
 
@@ -97,21 +99,33 @@ off from the right-click menu.
 ## How to use
 
 1. **Pair your earbuds** in **System Settings → Bluetooth** as usual and connect them.
-2. Click the **Nothing X** icon in the menu bar. The app finds the earbuds by
-   itself within a few seconds.
+2. Click the dotted earbud icon in the menu bar. The app finds the earbuds by
+   itself within a few seconds. If they're paired but not connected, the panel
+   lists them with a **Connect** button.
 
-| | |
-| --- | --- |
-| <img src="docs/screenshots/main-light.png" width="300" alt="Main panel"> | **Main panel**<br>Battery for each bud and the case. Tap a noise mode; while Noise Cancellation is on, pick an intensity. Tap the speaker to toggle Bass Enhance, and tap a step to set its level.<br><br>Top-right buttons: **Equalizer**, **Quick Settings**, **Quit**.<br><br>On models with gestures, **click the left or right bud** to open its Controls. |
-| <img src="docs/screenshots/quick-light.png" width="300" alt="Quick Settings"> | **Quick Settings**<br>Tap a tile to toggle it. Spatial Audio switches On/Off, or opens a list on models with several modes. Dual Connection shows the buds' remembered devices: click one to connect or disconnect it (at most two at once). **Find Buds** plays a loud sound, so take the buds out first.<br><br>Further down: **Ear Tip Fit Test** and device info. |
-| <img src="docs/screenshots/eq-light.png" width="300" alt="Equalizer"> | **Equalizer**<br>Pick a preset. **Custom** shows Bass / Mid / Treble sliders with a live curve. Use **Save Current…** to keep a set of bands under a name, click a saved preset to apply it, and right-click it to delete. |
-| <img src="docs/screenshots/controls-light.png" width="300" alt="Controls"> | **Controls**<br>Choose the left or right bud, then pick what each gesture does. When Tap and Hold is set to Noise Control, tick which modes it cycles through (at least two). |
+- **Main panel**: battery for each bud and the case. Pick a noise mode; while
+  Noise Cancellation is on, pick an intensity. Toggle Bass Enhance and drag its
+  slider to set the level. On models with gestures, **click the left or right
+  bud** to open its Controls. Top-right buttons: **Equalizer**, **Quick
+  Settings**, **Quit**.
+- **Quick Settings**: click a tile to toggle it. Tiles with a **›** open more
+  options: Spatial Audio modes, and Dual Connection's remembered devices, where
+  you can connect or disconnect each one (at most two at once). **Find Buds**
+  plays a loud sound, so take the buds out first. Further down: **Ear Tip Fit
+  Test** and device info.
+- **Equalizer**: pick a preset. **Custom** shows Bass / Mid / Treble sliders with
+  a live response curve. **Save Current…** keeps the bands under a name; click a
+  saved preset to apply it, or use its **…** menu to rename or delete it.
+- **Controls**: choose the left or right bud, then pick what each gesture does.
+  When Tap and Hold is set to Noise Control, tick which modes it cycles through
+  (at least two).
 
 **Right-click the menu bar icon** for:
 
 - **Open at Login**
 - **Battery in Menu Bar**: Icon Only, Left · Right, Average or Lowest
 - **Low Battery Alerts**: on by default. macOS asks to allow notifications the first time your earbuds connect.
+- **Use System Accent Color**: swap the red accent for your macOS accent color
 - **Quit**
 
 **Tips**
@@ -135,6 +149,7 @@ scripts/build-app.sh                 # build/Nothing X Mac.app for this Mac's ch
 scripts/build-app.sh --install       # …and copy it to /Applications
 scripts/build-app.sh --universal     # arm64 + x86_64 (needs the Xcode license accepted)
 scripts/make-dmg.sh 0.1.0            # dist/ DMG, zip and SHA256SUMS.txt
+swift scripts/make-icon.swift        # redraw the app icon
 ```
 
 You can also open `Package.swift` in Xcode, pick the **NothingXMac** scheme and press Run.
@@ -145,7 +160,8 @@ You can also open `Package.swift` in Xcode, pick the **NothingXMac** scheme and 
 swift run NothingKitChecks                      # protocol self-checks
 NXM_DEBUG=1 swift run NothingXMac               # log every frame to and from the earbuds
 NXM_OPEN=1  swift run NothingXMac               # open the panel on launch
-NXM_SNAPSHOT=docs/screenshots swift run NothingXMac   # regenerate the screenshots (debug build)
+NXM_ANIMATE=docs swift run NothingXMac          # regenerate the README GIFs (debug build)
+NXM_SNAPSHOT=/tmp/shots swift run NothingXMac   # render every page to PNG (debug build)
 NXM_FAKE_LOW_BATTERY=1 swift run NothingXMac    # sample buds at low battery, to test alerts (debug, run inside an .app)
 ```
 
@@ -177,7 +193,7 @@ Sources/NothingXMac/       Menu bar app: Bluetooth transport, device state, Swif
 Sources/NothingKitChecks/  Protocol self-checks
 Resources/                 Info.plist and app icon
 scripts/                   build-app.sh, make-dmg.sh
-docs/                      Architecture, protocol, screenshots
+docs/                      Architecture, protocol, demo GIFs
 .github/workflows/         CI and release
 ```
 

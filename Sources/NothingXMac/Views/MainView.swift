@@ -1,4 +1,6 @@
-// Main page: header, battery, noise control (with intensity) and Bass Enhance.
+// Main page: header, dot-matrix battery cells, noise control (with intensity)
+// and Bass Enhance. Before a connection it shows the "not connected" guide,
+// or a skeleton while the control channel is opening.
 
 import NothingKit
 import SwiftUI
@@ -11,175 +13,163 @@ struct MainView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
+            MainHeader()
+            PanelSeparator()
             if state.connected {
-                BatteryRow()
-                PanelDivider()
+                if !state.recognized {
+                    TipBox(bold: "Limited support.",
+                           text: "This model isn't recognised yet, so some controls may not work.")
+                        .padding(.horizontal, 12)
+                        .padding(.top, 10)
+                }
+                BatteryCells()
+                PanelSeparator()
                 NoiseControlSection()
                 if state.capabilities.bassSteps > 0, state.bass != nil {
-                    PanelDivider()
+                    PanelSeparator()
                     BassSection()
                 }
+            } else if state.connecting != nil {
+                ConnectingSkeleton()
             } else {
-                Text("Connect your Nothing or CMF earbuds in Bluetooth settings.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 14)
-                Button("Open Bluetooth Settings…") {
-                    if let url = URL(string: "x-apple.systempreferences:com.apple.BluetoothSettings") {
-                        NSWorkspace.shared.open(url)
-                    }
-                }
-                .buttonStyle(.link)
-                .font(.system(size: 12))
-                .padding(.bottom, 10)
+                NotConnectedView()
             }
         }
-    }
-
-    private var header: some View {
-        HStack(spacing: 10) {
-            ZStack {
-                Circle().fill(state.connected ? Color.accentColor : Color.primary.opacity(0.1))
-                Image(nsImage: MenuBarIcon.make())
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 16, height: 16)
-                    .foregroundStyle(state.connected ? Color.white : Color.primary)
-            }
-            .frame(width: 30, height: 30)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(state.connected ? (state.name ?? "Earbuds") : "No Earbuds")
-                    .font(.system(size: 13, weight: .semibold))
-                    .lineLimit(1)
-                Text(state.connected ? "Connected" : "Not connected")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 0)
-            HeaderButton(symbol: "slider.vertical.3", help: "Equalizer") { nav.page = .equalizer }
-                .disabled(!state.connected || state.capabilities.eq.presets.isEmpty)
-            HeaderButton(symbol: "gearshape", help: "Quick Settings") { nav.page = .quickSettings }
-                .disabled(!state.connected)
-            HeaderButton(symbol: "power", help: "Quit Nothing X Mac") { NSApp.terminate(nil) }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 6)
     }
 }
 
-private struct HeaderButton: View {
-    let symbol: String
-    let help: String
-    let action: () -> Void
-    @StateObject private var hovering = Local(false)
-    @Environment(\.isEnabled) private var enabled
+// MARK: - Header
+
+private struct MainHeader: View {
+    @EnvironmentObject var device: EarbudsController
+    @EnvironmentObject var nav: PanelNavigation
 
     var body: some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 13))
-                .frame(width: 26, height: 26)
-                .background(Circle().fill(Color.primary.opacity(hovering.value && enabled ? 0.1 : 0)))
-                .contentShape(Circle())
+        let state = device.state
+        HStack(spacing: 4) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                HStack(spacing: 5) {
+                    if state.connected {
+                        Circle().fill(Theme.label).frame(width: 6, height: 6)
+                    } else if state.connecting != nil {
+                        PendingSpinner(size: 9)
+                    }
+                    Text(status).font(.system(size: 11)).foregroundStyle(Theme.secondaryLabel)
+                }
+            }
+            Spacer(minLength: 0)
+            // Nothing to configure until the buds are connected; Quit stays in the right-click menu.
+            if state.connected {
+                if !state.capabilities.eq.presets.isEmpty {
+                    HeaderIconButton(symbol: "slider.vertical.3", help: "Equalizer") { nav.page = .equalizer }
+                }
+                HeaderIconButton(symbol: "square.grid.2x2", help: "Quick Settings") { nav.page = .quickSettings }
+                HeaderIconButton(symbol: "power", help: "Quit Nothing X Mac") { NSApp.terminate(nil) }
+            }
         }
-        .buttonStyle(.plain)
-        .opacity(enabled ? 1 : 0.35)
-        .help(help)
-        .onHover { hovering.value = $0 }
+        .padding(.leading, Theme.inset)
+        .padding(.trailing, 10)
+        .frame(height: 50)
+    }
+
+    private var title: String {
+        let state = device.state
+        if state.connected { return state.name ?? "Earbuds" }
+        return state.connecting ?? "Nothing X Mac"
+    }
+
+    private var status: String {
+        let state = device.state
+        if state.connected { return state.recognized ? "Connected" : "Unrecognised model" }
+        return state.connecting != nil ? "Connecting…" : "Not connected"
     }
 }
 
 // MARK: - Battery
 
-private struct BatteryRow: View {
+private struct BatteryCells: View {
     @EnvironmentObject var device: EarbudsController
     @EnvironmentObject var nav: PanelNavigation
 
     var body: some View {
         let battery = device.state.battery
-        let gestures = device.state.capabilities.gestures != nil
-        HStack(spacing: 0) {
-            if device.state.capabilities.ring == .buds || battery.left != nil || battery.right != nil {
-                BudColumn(symbol: "airpodpro.left", label: "Left", info: battery.left,
-                          clickable: gestures) { nav.page = .controls(.left) }
-                BudColumn(symbol: "airpodpro.right", label: "Right", info: battery.right,
-                          clickable: gestures) { nav.page = .controls(.right) }
+        let caps = device.state.capabilities
+        let gestures = caps.gestures != nil
+        HStack(spacing: 4) {
+            if caps.ring == .buds || battery.left != nil || battery.right != nil {
+                BatteryCell(icon: .bud(mirrored: true), label: "Left", info: battery.left,
+                            action: gestures ? { nav.page = .controls(.left) } : nil)
+                BatteryCell(icon: .bud(mirrored: false), label: "Right", info: battery.right,
+                            action: gestures ? { nav.page = .controls(.right) } : nil)
+                BatteryCell(icon: .symbol("earbuds.case"), label: "Case", info: battery.case, action: nil)
             } else {
-                BudColumn(symbol: "headphones", label: "Battery", info: battery.stereo, clickable: false) {}
-            }
-            // No case data (e.g. closed or out of range): drop the column so the buds sit centred.
-            if let info = battery.case {
-                BudColumn(symbol: "earbuds.case.fill", label: "Case", info: info, clickable: false) {}
+                BatteryCell(icon: .symbol("headphones"), label: "Battery", info: battery.stereo, action: nil)
+                Spacer().frame(maxWidth: .infinity)
+                Spacer().frame(maxWidth: .infinity)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 4)
+        .padding(8)
     }
 }
 
-private struct BudColumn: View {
-    let symbol: String
+enum CellIcon {
+    case bud(mirrored: Bool)
+    case symbol(String)
+}
+
+/// One battery column: icon + label, 5×7 dot numerals and a 10-dot level row.
+/// ≤20% (not charging) turns the numerals accent; charging or low lights the row in accent.
+struct BatteryCell: View {
+    let icon: CellIcon
     let label: String
     let info: BatteryLevel?
-    let clickable: Bool
-    let action: () -> Void
+    let action: (() -> Void)?
+    var skeleton = false
+    @Environment(\.accent) private var accent
     @StateObject private var hovering = Local(false)
 
     var body: some View {
-        Button { if clickable { action() } } label: {
-            VStack(spacing: 4) {
-                Image(systemName: symbol)
-                    .font(.system(size: 28, weight: .light))
-                    .frame(height: 34)
-                Text(label).font(.system(size: 11)).foregroundStyle(.secondary)
+        let low = info.map { !$0.charging && $0.level <= 20 } ?? false
+        let charging = info?.charging == true
+        Button { action?() } label: {
+            VStack(alignment: .leading, spacing: 7) {
                 HStack(spacing: 4) {
-                    if info?.charging == true {
-                        Image(systemName: "bolt.fill").font(.system(size: 8)).foregroundStyle(.green)
+                    switch icon {
+                    case .bud(let mirrored):
+                        DotBudView(look: skeleton ? .disconnected : .connected, size: 12,
+                                   mirrored: mirrored, color: Theme.secondaryLabel)
+                    case .symbol(let name):
+                        Image(systemName: name).font(.system(size: 10)).foregroundStyle(Theme.secondaryLabel)
+                            .frame(width: 12, height: 12)
                     }
-                    Text(info.map { "\($0.level)%" } ?? "—")
-                        .font(.system(size: 11).monospacedDigit())
-                    BatteryGlyph(info: info)
+                    Text(label).font(.system(size: 11, weight: .medium))
+                    Spacer(minLength: 0)
+                    if charging {
+                        Image(systemName: "bolt.fill").font(.system(size: 10)).foregroundStyle(accent)
+                            .accessibilityLabel("Charging")
+                    }
                 }
+                HStack(alignment: .lastTextBaseline, spacing: 2) {
+                    DotDigits(text: info.map { "\($0.level)" } ?? "--",
+                              on: info == nil ? Theme.tertiary : low ? accent : Theme.label)
+                    Text("%").font(.system(size: 11)).foregroundStyle(Theme.secondaryLabel)
+                }
+                DotMeter(count: 10, lit: info.map { Int((Double($0.level) / 10).rounded(.up)) } ?? 0,
+                         on: charging || low ? accent : Theme.label)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
+            .padding(8)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 8)
-                .fill(Color.primary.opacity(clickable && hovering.value ? 0.07 : 0)))
-            .opacity(info == nil ? 0.4 : 1)
+                .fill(action != nil && hovering.value ? Theme.controlFill : .clear))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .allowsHitTesting(clickable)
-        .help(clickable ? "\(label) earbud controls" : "")
+        .allowsHitTesting(action != nil)
+        .help(action != nil ? "\(label) earbud controls" : "")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label) \(info.map { "\($0.level) percent\($0.charging ? ", charging" : "")" } ?? "unknown")")
         .onHover { hovering.value = $0 }
-    }
-}
-
-private struct BatteryGlyph: View {
-    let info: BatteryLevel?
-
-    var body: some View {
-        let level = CGFloat(info?.level ?? 0) / 100
-        let low = (info.map { !$0.charging && $0.level <= 20 }) ?? false
-        let color: Color = info?.charging == true ? .green : low ? .red : .primary
-        HStack(spacing: 1) {
-            ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 2.5)
-                    .strokeBorder(Color.primary.opacity(0.35), lineWidth: 1)
-                RoundedRectangle(cornerRadius: 1.5)
-                    .fill(color)
-                    .frame(width: max(0, 18 * level))
-                    .padding(1.5)
-            }
-            .frame(width: 22, height: 10)
-            RoundedRectangle(cornerRadius: 1).fill(Color.primary.opacity(0.35)).frame(width: 1.5, height: 4)
-        }
     }
 }
 
@@ -191,81 +181,43 @@ private struct NoiseControlSection: View {
     var body: some View {
         let state = device.state
         let caps = state.capabilities
-        VStack(spacing: 0) {
-            SectionTitle("Noise Control")
-            option(.anc, "Noise Cancellation", "person.wave.2.fill")
-            if caps.transparency {
-                option(.transparency, "Transparency", "ear.and.waveform")
-            }
-            option(.off, "Off", "person.fill")
-
-            if state.noiseMode == .anc, !caps.strengths.isEmpty {
-                SectionTitle("Intensity").padding(.top, 4)
-                StrengthPicker()
-            }
+        var modes: [SegmentItem<NoiseMode>] = [SegmentItem(id: .anc, label: "ANC", symbol: "circle.inset.filled")]
+        if caps.transparency {
+            modes.append(SegmentItem(id: .transparency, label: "Transparency", symbol: "circle.dashed"))
         }
-    }
+        modes.append(SegmentItem(id: .off, label: "Off", symbol: "circle.slash"))
+        let strengths = caps.adaptive ? caps.strengths + [.adaptive] : caps.strengths
 
-    private func option(_ mode: NoiseMode, _ label: String, _ symbol: String) -> some View {
-        let selected = device.state.noiseMode == mode
-        return Button { device.setNoiseMode(mode) } label: {
-            HStack(spacing: 10) {
-                IconBadge(symbol: symbol, on: selected, pending: selected && device.state.noisePending)
-                Text(label).font(.system(size: 13))
-                Spacer()
+        return VStack(spacing: 0) {
+            SectionCaption("Noise Control").padding(.top, 12)
+            DotSegmented(items: modes, selection: state.noiseMode, pending: state.noisePending) {
+                device.setNoiseMode($0)
             }
-        }
-        .buttonStyle(HoverRowStyle())
-        .disabled(device.state.noisePending && !selected)
-    }
-}
+            .padding(.horizontal, Theme.inset)
 
-private struct StrengthPicker: View {
-    @EnvironmentObject var device: EarbudsController
-
-    var body: some View {
-        let caps = device.state.capabilities
-        let options = caps.adaptive ? caps.strengths + [.adaptive] : caps.strengths
-        HStack(spacing: 2) {
-            ForEach(options, id: \.self) { strength in
-                segment(strength)
-            }
-        }
-        .padding(2)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.08)))
-        .padding(.horizontal, 14)
-        .padding(.bottom, 4)
-        .disabled(device.state.noisePending)
-    }
-
-    private func segment(_ strength: AncStrength) -> some View {
-        let selected = device.state.ancStrength == strength
-        let (label, symbol): (String, String) = {
-            switch strength {
-            case .low: return ("Low", "dial.low")
-            case .mid: return ("Mid", "dial.medium")
-            case .high: return ("High", "dial.high")
-            case .adaptive: return ("Auto", "sparkles")
-            }
-        }()
-        return Button { device.setAncStrength(strength) } label: {
-            VStack(spacing: 2) {
-                if selected && device.state.noisePending {
-                    ProgressView().controlSize(.small).scaleEffect(0.6).frame(height: 14)
-                } else {
-                    Image(systemName: symbol).font(.system(size: 12)).frame(height: 14)
+            if state.noiseMode == .anc, !strengths.isEmpty {
+                HStack(spacing: 8) {
+                    Text("Intensity").font(.system(size: 11)).foregroundStyle(Theme.secondaryLabel)
+                    DotSegmented(items: strengths.map { SegmentItem(id: $0, label: Self.label($0)) },
+                                 selection: state.ancStrength, pending: state.noisePending,
+                                 height: 28) { device.setAncStrength($0) }
                 }
-                Text(label).font(.system(size: 10))
+                .padding(.horizontal, Theme.inset)
+                .padding(.top, 8)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 4)
-            .background(RoundedRectangle(cornerRadius: 6)
-                .fill(selected ? Color(nsColor: .controlBackgroundColor) : .clear)
-                .shadow(color: .black.opacity(selected ? 0.15 : 0), radius: 1, y: 0.5))
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .help(strength == .adaptive ? "Adaptive" : label)
+        .padding(.bottom, 12)
+        .animation(.easeOut(duration: 0.2), value: state.noiseMode == .anc)
+    }
+
+    static func label(_ strength: AncStrength) -> String {
+        switch strength {
+        case .low: return "Low"
+        case .mid: return "Mid"
+        case .high: return "High"
+        case .adaptive: return "Adaptive"
+        }
     }
 }
 
@@ -278,44 +230,184 @@ private struct BassSection: View {
         let bass = device.state.bass ?? BassValue(enabled: false, level: 1)
         let pending = device.state.bassPending
         let levels = device.state.capabilities.bassLevels
-        let filled = bass.enabled ? (levels.firstIndex(of: bass.level).map { $0 + 1 } ?? 0) : 0
+        let index = levels.firstIndex(of: bass.level) ?? 0
 
-        VStack(spacing: 0) {
-            SectionTitle("Bass Enhance")
-            HStack(spacing: 10) {
-                Button { device.setBass(enabled: !bass.enabled) } label: {
-                    IconBadge(symbol: "hifispeaker.fill", on: bass.enabled, pending: pending, size: 30)
+        VStack(spacing: 10) {
+            HStack {
+                Text("Bass Enhance").font(.system(size: 13))
+                if pending { PendingSpinner(size: 11) }
+                Spacer()
+                Toggle("Bass Enhance", isOn: Binding(get: { bass.enabled },
+                                                     set: { device.setBass(enabled: $0) }))
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .labelsHidden()
+            }
+            HStack {
+                SteppedSlider(steps: levels.count, index: index) { i in
+                    device.setBass(enabled: true, level: levels[i])
                 }
-                .buttonStyle(.plain)
-                .help(bass.enabled ? "Turn off Bass Enhance" : "Turn on Bass Enhance")
+                .frame(width: 200)
+                Spacer()
+                Text("Level \(index + 1)").font(.system(size: 11).monospacedDigit())
+                    .foregroundStyle(Theme.secondaryLabel)
+            }
+            .opacity(bass.enabled ? 1 : 0.4)
+        }
+        .padding(.horizontal, Theme.inset)
+        .padding(.vertical, 14)
+        .allowsHitTesting(!pending)
+    }
+}
 
-                // Stepped capsule: each step shows a waveform that grows with the level.
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.primary.opacity(0.1))
-                        Capsule().fill(Color.accentColor)
-                            .frame(width: geo.size.width * CGFloat(filled) / CGFloat(max(levels.count, 1)))
-                        HStack(spacing: 0) {
-                            ForEach(Array(levels.enumerated()), id: \.offset) { i, level in
-                                Button { device.setBass(enabled: true, level: level) } label: {
-                                    Image(systemName: "waveform")
-                                        .font(.system(size: 7 + 8 * CGFloat(i) / CGFloat(max(levels.count - 1, 1))))
-                                        .foregroundStyle(i < filled ? Color.white : Color.secondary)
-                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .help("Level \(level)")
-                            }
-                        }
+/// Slider with detents: 4 pt track, accent fill, 16 pt white knob, a tick per step.
+struct SteppedSlider: View {
+    let steps: Int
+    let index: Int
+    let onChange: (Int) -> Void
+    @Environment(\.accent) private var accent
+
+    var body: some View {
+        GeometryReader { geo in
+            let knob: CGFloat = 16
+            let usable = geo.size.width - knob
+            let step = steps > 1 ? usable / CGFloat(steps - 1) : 0
+            let x = knob / 2 + CGFloat(index) * step
+            ZStack(alignment: .leading) {
+                Capsule().fill(Theme.trackOff).frame(height: 4)
+                Capsule().fill(accent).frame(width: x, height: 4)
+                ForEach(0..<max(steps, 0), id: \.self) { i in
+                    Circle().fill(i <= index ? Color.white.opacity(0.9) : Theme.tertiary)
+                        .frame(width: 3, height: 3)
+                        .position(x: knob / 2 + CGFloat(i) * step, y: geo.size.height / 2)
+                }
+                Circle().fill(Color.white)
+                    .shadow(color: .black.opacity(0.3), radius: 1, y: 0.5)
+                    .frame(width: knob, height: knob)
+                    .position(x: x, y: geo.size.height / 2)
+            }
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0).onEnded { value in
+                guard steps > 1 else { return }
+                let i = Int(((value.location.x - knob / 2) / step).rounded())
+                let clamped = min(max(i, 0), steps - 1)
+                if clamped != index { onChange(clamped) }
+            })
+            .animation(.easeOut(duration: 0.15), value: index)
+        }
+        .frame(height: 24)
+        .accessibilityElement()
+        .accessibilityLabel("Level")
+        .accessibilityValue("\(index + 1) of \(steps)")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: if index < steps - 1 { onChange(index + 1) }
+            case .decrement: if index > 0 { onChange(index - 1) }
+            @unknown default: break
+            }
+        }
+    }
+}
+
+// MARK: - Before a connection
+
+private struct ConnectingSkeleton: View {
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 4) {
+                BatteryCell(icon: .bud(mirrored: true), label: "Left", info: nil, action: nil, skeleton: true)
+                BatteryCell(icon: .bud(mirrored: false), label: "Right", info: nil, action: nil, skeleton: true)
+                BatteryCell(icon: .symbol("earbuds.case"), label: "Case", info: nil, action: nil, skeleton: true)
+            }
+            .padding(8)
+            PanelSeparator()
+            VStack(spacing: 0) {
+                SectionCaption("Noise Control").padding(.top, 12)
+                DotSegmented(items: [SegmentItem(id: 0, label: "ANC", symbol: "circle.inset.filled"),
+                                     SegmentItem(id: 1, label: "Transparency", symbol: "circle.dashed"),
+                                     SegmentItem(id: 2, label: "Off", symbol: "circle.slash")],
+                             selection: nil) { _ in }
+                    .padding(.horizontal, Theme.inset)
+                    .padding(.bottom, 12)
+            }
+            .opacity(0.4)
+            FooterNote("If this takes long, close the Nothing X or CMF app on your phone. The earbuds accept one controller at a time.")
+                .padding(.bottom, 12)
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+private struct NotConnectedView: View {
+    @EnvironmentObject var device: EarbudsController
+
+    var body: some View {
+        VStack(spacing: 0) {
+            DotBudView(look: .disconnected, size: 44, color: Theme.label)
+                .padding(.top, 18)
+            Text("No earbuds connected")
+                .font(.system(size: 15, weight: .semibold))
+                .padding(.top, 12)
+            Text("Pair your earbuds in System Settings › Bluetooth. They show up here once connected.")
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.secondaryLabel)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 24)
+                .padding(.top, 6)
+
+            Button {
+                if let url = URL(string: "x-apple.systempreferences:com.apple.BluetoothSettings") {
+                    NSWorkspace.shared.open(url)
+                }
+            } label: {
+                Text("Open Bluetooth Settings").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(PanelButtonStyle())
+            .padding(.horizontal, Theme.inset)
+            .padding(.top, 14)
+
+            if !device.paired.isEmpty {
+                SectionCaption("Paired").padding(.top, 16)
+                VStack(spacing: 4) {
+                    ForEach(device.paired) { buds in
+                        PairedRow(buds: buds)
                     }
                 }
-                .frame(height: 30)
-                .opacity(bass.enabled ? 1 : 0.6)
+                .padding(.horizontal, Theme.inset)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 4)
-            .disabled(pending)
+
+            TipBox(bold: "Phone app open?",
+                   text: "Close Nothing X on your phone. The earbuds accept only one controller at a time.")
+                .padding(.horizontal, Theme.inset)
+                .padding(.top, 12)
+                .padding(.bottom, Theme.inset)
         }
+    }
+}
+
+private struct PairedRow: View {
+    let buds: BluetoothTransport.PairedEarbuds
+    @EnvironmentObject var device: EarbudsController
+
+    var body: some View {
+        let linking = device.linking == buds.address
+        HStack(spacing: 10) {
+            DotBudView(look: linking ? .connecting : .disconnected, size: 14, color: Theme.secondaryLabel)
+            Text(buds.name).font(.system(size: 13)).lineLimit(1)
+            Spacer(minLength: 4)
+            if linking {
+                PendingSpinner(size: 12)
+            } else {
+                Button("Connect") { device.connectPaired(buds.address) }
+                    .buttonStyle(PanelButtonStyle())
+                    .controlSize(.small)
+                    .disabled(device.linking != nil)
+            }
+        }
+        .padding(.leading, 10)
+        .padding(.trailing, 6)
+        .frame(height: 40)
+        .background(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.separator))
     }
 }

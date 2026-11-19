@@ -9,6 +9,10 @@ import NothingKit
 
 final class EarbudsController: ObservableObject {
     @Published private(set) var state = DeviceState()
+    /// Paired Nothing/CMF earbuds that aren't connected, for the "not connected" page.
+    @Published private(set) var paired: [BluetoothTransport.PairedEarbuds] = []
+    /// Address of a paired device we're bringing up the Bluetooth link to.
+    @Published private(set) var linking: String?
 
     private static let batteryPoll: TimeInterval = 60
     private static let queryGap: TimeInterval = 0.15
@@ -75,6 +79,9 @@ final class EarbudsController: ObservableObject {
         }
         transport.onConnected = { [unowned self] name, address in self.didConnect(name: name, address: address) }
         transport.onDisconnected = { [unowned self] in self.didDisconnect() }
+        transport.onConnecting = { [unowned self] name in
+            if !self.state.connected, self.state.connecting != name { self.state.connecting = name }
+        }
         transport.onData = { [unowned self] bytes in self.didReceive(bytes) }
     }
 
@@ -82,11 +89,30 @@ final class EarbudsController: ObservableObject {
 
     #if DEBUG
     func setSampleState(_ sample: DeviceState) { state = sample }
+    func setSamplePaired(_ sample: [BluetoothTransport.PairedEarbuds]) { paired = sample }
     #endif
 
     func stop() {
         resetTimers()
         transport.stop()
+    }
+
+    func refreshPaired() {
+        guard !state.connected else { return }
+        let found = BluetoothTransport.pairedEarbuds(isEarbuds: Capabilities.looksLikeEarbuds)
+        if found != paired { paired = found }
+    }
+
+    /// Connect paired earbuds' Bluetooth link; the transport then opens the control channel.
+    func connectPaired(_ address: String) {
+        guard linking == nil else { return }
+        linking = address
+        transport.connectPaired(address) { [weak self] ok in
+            guard let self else { return }
+            self.linking = nil
+            if !ok { Log.info("Could not connect \(address)") }
+            self.refreshPaired()
+        }
     }
 
     func refreshBattery() {
@@ -423,6 +449,12 @@ final class EarbudsController: ObservableObject {
         }
     }
 
+    /// Stop waiting for a result (the buds finish their tone on their own).
+    func cancelEarTipTest() {
+        earTipTimer.cancel()
+        state.earTip = .idle
+    }
+
     func resetEarTipTest() {
         earTipTimer.cancel()
         if state.earTip != .running { state.earTip = .idle }
@@ -445,6 +477,7 @@ final class EarbudsController: ObservableObject {
         fresh.name = name
         fresh.address = address
         fresh.capabilities = Capabilities.forDeviceName(name)
+        fresh.recognized = Capabilities.isRecognized(name)
         state = fresh
 
         // Stagger the first reads so the earbuds aren't flooded.
