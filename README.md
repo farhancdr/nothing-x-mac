@@ -62,8 +62,9 @@ tried are very welcome. Run with `NXM_DEBUG=1` (see below) and open an issue.
 
 ## Small and native
 
-This is a ground-up native rewrite of an Electron app. Here's how it compares
-with the other macOS apps for these earbuds:
+Inspired by [nothing-x-mac](https://github.com/yashraut362/nothing-x-mac) by
+Yash Raut and built natively in Swift. Here's how it compares with the other
+macOS apps for these earbuds:
 
 | App | Stack | Download (latest release) |
 | --- | --- | --- |
@@ -165,20 +166,6 @@ NXM_SNAPSHOT=/tmp/shots swift run NothingXMac   # render every page to PNG (debu
 NXM_FAKE_LOW_BATTERY=1 swift run NothingXMac    # sample buds at low battery, to test alerts (debug, run inside an .app)
 ```
 
-### Releasing
-
-Push a version tag and GitHub Actions does the rest
-([`.github/workflows/release.yml`](.github/workflows/release.yml)). It runs the
-checks, builds a universal app stamped with the version, packages a DMG and a
-zip with checksums, and publishes a GitHub release:
-
-```bash
-git tag v0.2.0
-git push origin v0.2.0
-```
-
-It can also be started by hand from the **Actions** tab (Release → Run workflow).
-
 ## Docs
 
 - [Architecture and how it works](docs/ARCHITECTURE.md): modules, connection
@@ -199,7 +186,7 @@ docs/                      Architecture, protocol, demo GIFs
 
 ## Credits
 
-- Ported from [nothing-x-mac](https://github.com/yashraut362/nothing-x-mac) by
+- Inspired by [nothing-x-mac](https://github.com/yashraut362/nothing-x-mac) by
   Yash Raut (MIT): app design, protocol handling, model data, app icon and logo.
 - Earbud protocol and model data originally from
   [ear-web](https://github.com/radiance-project/ear-web) by the Radiance project.
