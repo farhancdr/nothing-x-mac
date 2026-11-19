@@ -3,7 +3,7 @@
   <h1 align="center">Nothing X Mac</h1>
   <p align="center">
     Control your Nothing and CMF earbuds from the Mac menu bar.<br>
-    Native Swift and SwiftUI · about 1 MB download · macOS 13+ · Apple Silicon and Intel
+    Native Swift and SwiftUI · about 2 MB download · macOS 13+ · Apple Silicon and Intel
   </p>
   <p align="center">
     <a href="https://github.com/farhancdr/nothing-x-mac/releases/latest"><b>Download</b></a>
@@ -68,7 +68,7 @@ macOS apps for these earbuds:
 
 | App | Stack | Download (latest release) |
 | --- | --- | --- |
-| **Nothing X Mac (this)** | Swift, SwiftUI, IOBluetooth | **1.0 MB** DMG (universal), 3.3 MB installed |
+| **Nothing X Mac (this)** | Swift, SwiftUI, IOBluetooth | **1.8 MB** DMG (universal), 4.5 MB installed |
 | [yashraut362/nothing-x-mac](https://github.com/yashraut362/nothing-x-mac) | Electron + Swift helper | 245 MB DMG / 223 MB zip |
 | [nikiomori/nothing-x-macos](https://github.com/nikiomori/nothing-x-macos) | Swift, SwiftUI | 16.2 MB zip |
 | [arunavo4/nothing-x-macos](https://github.com/arunavo4/nothing-x-macos) | Swift, SwiftUI | no release (UI prototype) |
