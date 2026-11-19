@@ -127,5 +127,28 @@ let tip = Codec.decodeEarTipResult([0, 1])
 check(tip.left == .good && tip.right == .poor, "ear tip result")
 check(plus.earTipTest && !ear1.earTipTest, "ear tip support")
 
+// Low battery alerts.
+func report(left: Int?, right: Int? = nil, charging: Bool = false) -> Battery {
+    var b = Battery()
+    b.left = left.map { BatteryLevel(level: $0, charging: charging) }
+    b.right = right.map { BatteryLevel(level: $0, charging: charging) }
+    return b
+}
+var lowTracker = LowBatteryTracker()
+check(lowTracker.update(report(left: 50)).isEmpty, "no alert above 20%")
+check(lowTracker.update(report(left: 20)) == [LowBatteryAlert(part: .left, level: 20, threshold: 20)], "alert at 20%")
+check(lowTracker.update(report(left: 19)).isEmpty, "no repeat while draining toward 10%")
+check(lowTracker.update(report(left: 21)).isEmpty, "small bounce doesn't re-arm")
+check(lowTracker.update(report(left: 10)).map(\.threshold) == [10], "second alert at 10%")
+check(lowTracker.update(report(left: 4)).isEmpty, "no repeat below 10%")
+check(lowTracker.update(report(left: 4, charging: true)).isEmpty, "no alert while charging")
+check(lowTracker.update(report(left: 15)).map(\.threshold) == [20], "re-armed after charging")
+check(lowTracker.update(report(left: nil, right: 18)).map(\.part) == [.right], "missing bud ignored, other bud alerts")
+var connectLow = LowBatteryTracker()
+check(connectLow.update(report(left: 8, right: 9)).map(\.threshold) == [10, 10], "connecting already low alerts once per bud at 10%")
+var swapped = LowBatteryTracker()
+_ = swapped.update(report(left: 9))
+check(swapped.update(report(left: 15)).map(\.threshold) == [20], "recovering 5+ points re-arms (15% after 10% alert)")
+
 print("\(passes) passed, \(failures) failed")
 exit(failures == 0 ? 0 : 1)

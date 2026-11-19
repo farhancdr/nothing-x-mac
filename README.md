@@ -32,6 +32,7 @@ to the earbuds directly over Bluetooth. No account, no internet, no telemetry.
 ## Features
 
 - **Battery** for the left bud, right bud and case, optionally shown in the menu bar
+- **Low battery alerts**: a notification at 20% and again at 10%, without repeats
 - **Noise Control**: Noise Cancellation, Transparency or Off, with intensity (Low / Mid / High / Auto)
 - **Bass Enhance** with a stepped level slider
 - **Equalizer**: presets, a 3-band custom EQ with a live curve, and your own saved presets
@@ -110,6 +111,7 @@ off from the right-click menu.
 
 - **Open at Login**
 - **Battery in Menu Bar**: Icon Only, Left · Right, Average or Lowest
+- **Low Battery Alerts**: on by default. macOS asks to allow notifications the first time your earbuds connect.
 - **Quit**
 
 **Tips**
@@ -144,6 +146,7 @@ swift run NothingKitChecks                      # protocol self-checks
 NXM_DEBUG=1 swift run NothingXMac               # log every frame to and from the earbuds
 NXM_OPEN=1  swift run NothingXMac               # open the panel on launch
 NXM_SNAPSHOT=docs/screenshots swift run NothingXMac   # regenerate the screenshots (debug build)
+NXM_FAKE_LOW_BATTERY=1 swift run NothingXMac    # sample buds at low battery, to test alerts (debug, run inside an .app)
 ```
 
 ### Releasing

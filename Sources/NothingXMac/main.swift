@@ -3,6 +3,7 @@
 
 import AppKit
 import Combine
+import NothingKit
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
@@ -11,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let controller = EarbudsController()
     private let settings = AppSettings()
     private let navigation = PanelNavigation()
+    private var lowBattery: LowBatteryNotifier?
     private var statusItem: NSStatusItem!
     private let popover = NSPopover()
     private var cancellables = Set<AnyCancellable>()
@@ -47,7 +49,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             .sink { [weak self] state, mode in self?.updateStatusItem(state: state, mode: mode) }
             .store(in: &cancellables)
 
+        lowBattery = LowBatteryNotifier(controller: controller, settings: settings)
         controller.start()
+
+        #if DEBUG
+        // NXM_FAKE_LOW_BATTERY=1: pretend low earbuds are connected, to test alerts.
+        if ProcessInfo.processInfo.environment["NXM_FAKE_LOW_BATTERY"] != nil {
+            controller.stop()
+            controller.loadSample()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                var state = self.controller.state
+                state.battery.left = BatteryLevel(level: 18, charging: false)
+                state.battery.right = BatteryLevel(level: 9, charging: false)
+                self.controller.setSampleState(state)
+            }
+        }
+        #endif
 
         // Dev convenience: NXM_OPEN=1 opens the panel on launch.
         if ProcessInfo.processInfo.environment["NXM_OPEN"] != nil {
@@ -126,6 +143,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         batteryItem.submenu = batteryMenu
         menu.addItem(batteryItem)
 
+        let alerts = NSMenuItem(title: "Low Battery Alerts", action: #selector(toggleLowBatteryAlerts), keyEquivalent: "")
+        alerts.target = self
+        alerts.state = settings.lowBatteryAlerts ? .on : .off
+        alerts.toolTip = "Notify at 20% and 10% for each earbud and the case"
+        menu.addItem(alerts)
+
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit \(Self.appName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(quit)
@@ -138,6 +161,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     @objc private func toggleLoginItem() {
         LoginItem.setEnabled(!LoginItem.isEnabled)
+    }
+
+    @objc private func toggleLowBatteryAlerts() {
+        settings.lowBatteryAlerts.toggle()
     }
 
     @objc private func setMenuBarBattery(_ sender: NSMenuItem) {

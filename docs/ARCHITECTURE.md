@@ -51,13 +51,15 @@ Sources/NothingKit/
   Frame.swift              Frame encoder, CRC-16/MODBUS, streaming FrameParser
   Commands.swift           Command and response ids, Codec (all payload formats), value types
   Models.swift             Per-model capability table, EQ preset lists, gesture layouts
+  LowBattery.swift         When to alert: 20% / 10% thresholds, re-arm after charging
 Sources/NothingXMac/
   main.swift               App entry, status item, popover, right-click menu
   BluetoothTransport.swift Finds the buds, opens and recovers the RFCOMM channel, relays bytes
   EarbudsController.swift  All device state and every setter; routes incoming frames
   ConfirmedSetting.swift   "Wait until the buds confirm" helper plus timer utilities
   DeviceState.swift        Plain value types the UI renders
-  AppSettings.swift        Menu bar battery mode, saved EQs, Open at Login
+  AppSettings.swift        Menu bar battery mode, low battery alerts, saved EQs, Open at Login
+  LowBatteryNotifier.swift Posts notifications; rules live in NothingKit/LowBattery.swift
   MenuBarIcon.swift        Draws the logo as a template image from its SVG path
   DebugSnapshots.swift     Debug only: renders every page to PNG (used for docs/screenshots)
   Views/                   One file per panel page plus shared components
@@ -171,6 +173,16 @@ Every model advertises a product name over Bluetooth (e.g. "CMF Buds 2 Plus").
 Unknown names fall back to a sensible default. Where one name covers two
 hardware revisions, the first bass report corrects the guess (wire level 5
 only exists on 3-step models).
+
+## Low battery alerts
+
+`LowBatteryNotifier` watches battery reports and asks `LowBatteryTracker`
+(in NothingKit, covered by the self-checks) whether to alert. Each part (left,
+right, case, or a single headphone battery) alerts once at 20% and once at
+10%. It re-arms after charging, or once the level is back 5+ points above the
+last alert, so a battery hovering at 19–21% never spams you. Parts that cross a
+threshold in the same report share one notification. Permission is requested
+the first time earbuds connect, not at launch.
 
 ## UI
 

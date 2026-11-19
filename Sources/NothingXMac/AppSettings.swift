@@ -60,6 +60,11 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(menuBarBattery.rawValue, forKey: "menuBarBattery") }
     }
 
+    /// Notify when a bud, the case or headphones drop to 20% and 10%.
+    @Published var lowBatteryAlerts: Bool {
+        didSet { defaults.set(lowBatteryAlerts, forKey: "lowBatteryAlerts") }
+    }
+
     @Published private(set) var savedEqs: [SavedEq] {
         didSet {
             if let data = try? JSONEncoder().encode(savedEqs) { defaults.set(data, forKey: "savedEqs") }
@@ -68,6 +73,7 @@ final class AppSettings: ObservableObject {
 
     init() {
         menuBarBattery = MenuBarBattery(rawValue: defaults.string(forKey: "menuBarBattery") ?? "") ?? .off
+        lowBatteryAlerts = defaults.object(forKey: "lowBatteryAlerts") as? Bool ?? true
         if let data = defaults.data(forKey: "savedEqs"),
            let saved = try? JSONDecoder().decode([SavedEq].self, from: data) {
             savedEqs = saved
